@@ -1,0 +1,93 @@
+@startuml
+title Взаимодействие микросервисов в системе обработки заказов
+
+actor Пользователь
+participant "Сервис заказов\n(Order Service)" as OrderService #LightBlue
+participant "Сервис биллинга\n(Billing Service)" as BillingService #LightGreen
+participant "Сервис уведомлений\n(Notification Service)" as NotificationService #LightPink
+database "База данных заказов" as OrderDB #AliceBlue
+database "База данных биллинга" as BillingDB #PaleGreen
+database "База данных уведомлений" as NotificationDB #MistyRose
+queue "RabbitMQ" as RabbitMQ #LightYellow
+
+note across: Все сервисы используют единый ключ подписи JWT_SIGNING_KEY, JWT_TOKEN_ISSUER и JWT_TOKEN_AUDIENCES\nJWT токен, выданный одним сервисом, успешно проверяется другими сервисами
+
+== Регистрация и авторизация пользователя ==
+Пользователь -> OrderService: POST /api/v1/auth/register
+OrderService -> OrderDB: Сохранение данных пользователя
+OrderService -> BillingService: POST /api/v1/accounts (Create Account)
+BillingService -> BillingDB: Сохранение аккаунта с нулевым балансом
+BillingService --> OrderService: 201 Created (Account)
+OrderService --> Пользователь: 201 Created (User)
+
+Пользователь -> OrderService: POST /api/v1/auth/login
+OrderService -> OrderDB: Проверка учетных данных
+OrderService --> Пользователь: 200 OK + JWT токен
+
+== Создание заказа ==
+Пользователь -> OrderService: POST /api/v1/orders + JWT токен
+OrderService -> OrderService: Проверка JWT и авторизация
+OrderService -> BillingService: POST /api/v1/billing/withdraw + JWT токен
+BillingService -> BillingService: Проверка JWT и авторизация
+BillingService -> BillingDB: Проверка баланса
+alt Достаточно средств
+    BillingService -> BillingDB: Списание средств
+    BillingService -> BillingDB: Запись транзакции со статусом "success"
+    BillingService --> OrderService: 200 OK {"success": true}
+    OrderService -> OrderDB: Сохранение заказа со статусом "completed"
+    OrderService -> RabbitMQ: Публикация события "order.notification" (success=true)
+    OrderService --> Пользователь: 201 Created (Order)
+    RabbitMQ -> NotificationService: Получение события "order.notification"
+    NotificationService -> NotificationService: Формирование уведомления об успешном заказе
+    NotificationService -> NotificationDB: Сохранение уведомления
+    NotificationService --> Пользователь: Отправка уведомления об успешном заказе
+else Недостаточно средств
+    BillingService -> BillingDB: Запись транзакции со статусом "failed"
+    BillingService -> RabbitMQ: Публикация события "billing.insufficient_funds"
+    BillingService --> OrderService: 200 OK {"success": false}
+    OrderService -> OrderDB: Сохранение заказа со статусом "failed"
+    OrderService -> RabbitMQ: Публикация события "order.notification" (success=false)
+    OrderService --> Пользователь: 201 Created (Order со статусом failed)
+    RabbitMQ -> NotificationService: Получение события "billing.insufficient_funds"
+    NotificationService -> NotificationService: Формирование уведомления о недостатке средств
+    NotificationService -> NotificationDB: Сохранение уведомления
+    NotificationService --> Пользователь: Отправка уведомления о недостатке средств
+    RabbitMQ -> NotificationService: Получение события "order.notification" (success=false)
+    NotificationService -> NotificationService: Формирование уведомления о неудачном заказе
+    NotificationService -> NotificationDB: Сохранение уведомления
+    NotificationService --> Пользователь: Отправка уведомления о неудачной попытке создания заказа
+end
+
+== Пополнение счета ==
+Пользователь -> BillingService: POST /api/v1/billing/deposit + JWT токен
+BillingService -> BillingService: Проверка JWT и авторизация
+BillingService -> BillingDB: Пополнение баланса
+BillingService -> BillingDB: Запись транзакции со статусом "success"
+BillingService -> RabbitMQ: Публикация события "billing.deposit"
+BillingService --> Пользователь: 200 OK {"success": true}
+RabbitMQ -> NotificationService: Получение события "billing.deposit"
+NotificationService -> NotificationService: Формирование уведомления о пополнении
+NotificationService -> NotificationDB: Сохранение уведомления
+NotificationService --> Пользователь: Уведомление о пополнении счета
+
+== Получение информации о счете и заказах ==
+Пользователь -> BillingService: GET /api/v1/billing/account + JWT токен
+BillingService -> BillingService: Проверка JWT и авторизация
+BillingService -> BillingDB: Запрос данных аккаунта
+BillingService --> Пользователь: 200 OK (Account)
+
+Пользователь -> OrderService: GET /api/v1/users/{userId}/orders + JWT токен
+OrderService -> OrderService: Проверка JWT и авторизация (userId == текущий пользователь)
+OrderService -> OrderDB: Запрос заказов пользователя
+OrderService --> Пользователь: 200 OK (Orders)
+
+Пользователь -> OrderService: GET /api/v1/orders/{orderId} + JWT токен
+OrderService -> OrderService: Проверка JWT и авторизация
+OrderService -> OrderDB: Запрос заказа по ID
+OrderService --> Пользователь: 200 OK (Order)
+
+== Получение информации об уведомлениях ==
+Пользователь -> NotificationService: GET /api/v1/users/{userId}/notifications
+NotificationService -> NotificationDB: Запрос уведомлений пользователя
+NotificationService --> Пользователь: 200 OK (Notifications)
+@enduml

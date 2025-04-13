@@ -1,0 +1,606 @@
+{
+  "info": {
+    "name": "dz7_shop E2E Tests",
+    "description": "Коллекция тестов для проверки взаимодействия между микросервисами интернет-магазина. Тесты проверяют основные процессы, включая регистрацию, создание заказов, обработку платежей и уведомления. Также включена проверка работы единого JWT токена между всеми сервисами.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "12345678"
+  },
+  "item": [
+    {
+      "name": "1. Регистрация пользователя",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = JSON.parse(responseBody);",
+              "",
+              "pm.test(\"Статус 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test(\"Ответ содержит ID пользователя\", function () {",
+              "    pm.expect(jsonData.id).to.exist;",
+              "    pm.expect(jsonData.id).to.be.a('number');",
+              "    pm.collectionVariables.set(\"user_id\", jsonData.id);",
+              "});",
+              "",
+              "pm.test(\"Имя пользователя и email соответствуют запросу\", function () {",
+              "    pm.expect(jsonData.username).to.equal(\"testuser\");",
+              "    pm.expect(jsonData.email).to.equal(\"test@example.com\");",
+              "});",
+              "",
+              "// Сохраняем учетные данные для последующей авторизации",
+              "pm.collectionVariables.set(\"username\", \"testuser\");",
+              "pm.collectionVariables.set(\"password\", \"password123\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"username\": \"testuser\",\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/auth/register",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "auth", "register"]
+        },
+        "description": "Регистрация пользователя в сервисе заказов"
+      }
+    },
+    {
+      "name": "2. Авторизация пользователя",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = JSON.parse(responseBody);",
+              "",
+              "pm.test(\"Статус 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Ответ содержит ID пользователя\", function () {",
+              "    pm.expect(jsonData.id).to.exist;",
+              "    pm.expect(jsonData.id).to.be.a('number');",
+              "    pm.expect(jsonData.id).to.equal(parseInt(pm.collectionVariables.get(\"user_id\")));",
+              "});",
+              "",
+              "pm.test(\"Ответ содержит токен\", function () {",
+              "    pm.expect(jsonData.token).to.exist;",
+              "    pm.expect(jsonData.token).to.be.a('string');",
+              "    pm.collectionVariables.set(\"auth_token\", jsonData.token);",
+              "});",
+              "",
+              "pm.test(\"Имя пользователя совпадает с запросом\", function () {",
+              "    pm.expect(jsonData.username).to.equal(pm.collectionVariables.get(\"username\"));",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"username\": \"{{username}}\",\n    \"password\": \"{{password}}\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/auth/login",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "auth", "login"]
+        },
+        "description": "Авторизация пользователя в сервисе заказов"
+      }
+    },
+    {
+      "name": "3. Проверка создания аккаунта в биллинге",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = JSON.parse(responseBody);",
+              "",
+              "pm.test(\"Статус 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Аккаунт создан с правильным user_id\", function () {",
+              "    pm.expect(jsonData.user_id).to.equal(parseInt(pm.collectionVariables.get(\"user_id\")));",
+              "});",
+              "",
+              "pm.test(\"Баланс равен 0\", function () {",
+              "    pm.expect(jsonData.balance).to.equal(0);",
+              "});",
+              "",
+              "pm.collectionVariables.set(\"account_id\", jsonData.id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/v1/accounts/{{user_id}}",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "v1", "accounts", "{{user_id}}"]
+        },
+        "description": "Проверка, что аккаунт в биллинге создан автоматически и JWT токен работает в биллинг сервисе"
+      }
+    },
+    {
+      "name": "4. Пополнение баланса",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = JSON.parse(responseBody);",
+              "",
+              "pm.test(\"Статус 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Транзакция успешна\", function () {",
+              "    pm.expect(jsonData.transaction.status).to.equal(\"success\");",
+              "});",
+              "",
+              "pm.test(\"Операция успешна\", function () {",
+              "    pm.expect(jsonData.success).to.be.true;",
+              "});",
+              "",
+              "// Получаем текущий баланс пользователя",
+              "pm.sendRequest({",
+              "    url: `http://localhost:8081/api/v1/accounts/${pm.collectionVariables.get(\"user_id\")}`,",
+              "    method: 'GET',",
+              "    header: {",
+              "        'Authorization': `Bearer ${pm.collectionVariables.get(\"auth_token\")}`",
+              "    }",
+              "}, function (err, response) {",
+              "    if (err) {",
+              "        console.error(err);",
+              "    } else {",
+              "        var accountData = response.json();",
+              "        pm.test(\"Баланс обновлен\", function () {",
+              "            pm.expect(accountData.balance).to.equal(1000);",
+              "        });",
+              "        pm.collectionVariables.set(\"balance\", accountData.balance);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_id\": {{user_id}},\n    \"amount\": 1000\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8081/api/v1/billing/deposit",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "v1", "billing", "deposit"]
+        },
+        "description": "Пополнение баланса пользователя с использованием JWT токена"
+      }
+    },
+    {
+      "name": "5. Создание заказа (успешный)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = JSON.parse(responseBody);",
+              "",
+              "pm.test(\"Статус 201 Created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test(\"Заказ создан с правильным user_id\", function () {",
+              "    pm.expect(jsonData.user_id).to.equal(parseInt(pm.collectionVariables.get(\"user_id\")));",
+              "});",
+              "",
+              "pm.test(\"Статус заказа 'completed'\", function () {",
+              "    pm.expect(jsonData.status).to.equal(\"completed\");",
+              "});",
+              "",
+              "pm.test(\"Сумма заказа соответствует запросу\", function () {",
+              "    pm.expect(jsonData.amount).to.equal(500);",
+              "});",
+              "",
+              "pm.collectionVariables.set(\"order_id\", jsonData.id);",
+              "pm.collectionVariables.set(\"order_amount\", jsonData.amount);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"items\": [\n        {\n            \"product_id\": 1,\n            \"name\": \"Товар 1\",\n            \"price\": 250,\n            \"quantity\": 2\n        }\n    ],\n    \"amount\": 500\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/orders",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "orders"]
+        },
+        "description": "Создание заказа, на который хватает денег"
+      }
+    },
+    {
+      "name": "6. Проверка баланса после успешного заказа",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = JSON.parse(responseBody);",
+              "var previousBalance = parseFloat(pm.collectionVariables.get(\"balance\"));",
+              "var orderAmount = parseFloat(pm.collectionVariables.get(\"order_amount\"));",
+              "var expectedBalance = previousBalance - orderAmount;",
+              "",
+              "pm.test(\"Статус 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Баланс уменьшился на сумму заказа\", function () {",
+              "    pm.expect(jsonData.balance).to.equal(expectedBalance);",
+              "});",
+              "",
+              "pm.collectionVariables.set(\"balance\", jsonData.balance);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/v1/accounts/{{user_id}}",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "v1", "accounts", "{{user_id}}"]
+        },
+        "description": "Проверка, что деньги были сняты со счета, используя тот же JWT токен"
+      }
+    },
+    {
+      "name": "7. Проверка отправки уведомления (успешный заказ)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = JSON.parse(responseBody);",
+              "",
+              "pm.test(\"Статус 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Уведомление для пользователя существует\", function () {",
+              "    pm.expect(jsonData.notifications.length).to.be.above(0);",
+              "});",
+              "",
+              "var found = false;",
+              "var orderID = pm.collectionVariables.get(\"order_id\");",
+              "",
+              "// Ищем уведомление об успешном заказе",
+              "for (var i = 0; i < jsonData.notifications.length; i++) {",
+              "    var subject = jsonData.notifications[i].subject;",
+              "    if (subject.includes(orderID) && subject.includes(\"успешно\")) {",
+              "        found = true;",
+              "        break;",
+              "    }",
+              "}",
+              "",
+              "pm.test(\"Найдено уведомление об успешном заказе #\" + orderID, function () {",
+              "    pm.expect(found).to.be.true;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8082/api/v1/users/{{user_id}}/notifications",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8082",
+          "path": ["api", "v1", "users", "{{user_id}}", "notifications"]
+        },
+        "description": "Проверка, что отправлено уведомление об успешном заказе, используя тот же JWT токен"
+      }
+    },
+    {
+      "name": "8. Создание заказа (неудачный, недостаточно средств)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "try {",
+              "    var jsonData = JSON.parse(responseBody);",
+              "    ",
+              "    pm.test(\"Статус 201 Created\", function () {",
+              "        pm.response.to.have.status(201);",
+              "    });",
+              "    ",
+              "    pm.test(\"Заказ имеет статус failed\", function () {",
+              "        pm.expect(jsonData.status).to.equal('failed');",
+              "    });",
+              "    ",
+              "    // Сохраняем ID заказа",
+              "    if (jsonData.id) {",
+              "        pm.collectionVariables.set(\"failed_order_id\", jsonData.id);",
+              "    } else {",
+              "        // Используем временное значение, если ID нет в ответе",
+              "        pm.collectionVariables.set(\"failed_order_id\", \"failed\");",
+              "    }",
+              "} catch (e) {",
+              "    pm.collectionVariables.set(\"failed_order_id\", \"failed\");",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"items\": [\n        {\n            \"product_id\": 2,\n            \"name\": \"Дорогой товар\",\n            \"price\": 2000,\n            \"quantity\": 1\n        }\n    ],\n    \"amount\": 2000\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/v1/orders",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["api", "v1", "orders"]
+        },
+        "description": "Создание заказа, на который не хватает денег"
+      }
+    },
+    {
+      "name": "9. Проверка баланса после неудачного заказа",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = JSON.parse(responseBody);",
+              "var previousBalance = parseFloat(pm.collectionVariables.get(\"balance\"));",
+              "",
+              "pm.test(\"Статус 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Баланс не изменился\", function () {",
+              "    pm.expect(jsonData.balance).to.equal(previousBalance);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/v1/accounts/{{user_id}}",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "v1", "accounts", "{{user_id}}"]
+        },
+        "description": "Проверка, что с баланса не списались деньги при неудачном заказе"
+      }
+    },
+    {
+      "name": "10. Проверка отправки уведомления (неудачный заказ)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = JSON.parse(responseBody);",
+              "",
+              "pm.test(\"Статус 200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "// Проверка наличия уведомления о проблеме с заказом",
+              "var foundOrderProblem = false;",
+              "var foundInsufficientFunds = false;",
+              "",
+              "for (var i = 0; i < jsonData.notifications.length; i++) {",
+              "    var subject = jsonData.notifications[i].subject;",
+              "    var message = jsonData.notifications[i].message;",
+              "    ",
+              "    // Ищем уведомление, которое содержит упоминание о проблеме с заказом",
+              "    if (subject.includes(\"роблем\") && message.includes(\"заказ\") && message.includes(\"2000\")) {",
+              "        foundOrderProblem = true;",
+              "    }",
+              "    ",
+              "    // Ищем уведомление о недостатке средств",
+              "    if (subject.includes(\"едостаточно средств\") && message.includes(\"пополните баланс\")) {",
+              "        foundInsufficientFunds = true;",
+              "    }",
+              "}",
+              "",
+              "pm.test(\"Найдено уведомление о проблеме с заказом\", function () {",
+              "    pm.expect(foundOrderProblem).to.be.true;",
+              "});",
+              "",
+              "pm.test(\"Найдено уведомление о недостатке средств\", function () {",
+              "    pm.expect(foundInsufficientFunds).to.be.true;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8082/api/v1/users/{{user_id}}/notifications",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8082",
+          "path": ["api", "v1", "users", "{{user_id}}", "notifications"]
+        },
+        "description": "Проверка, что отправлено уведомление о проблеме с заказом, используя тот же JWT токен"
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "user_id",
+      "value": ""
+    },
+    {
+      "key": "auth_token",
+      "value": ""
+    },
+    {
+      "key": "account_id",
+      "value": ""
+    },
+    {
+      "key": "balance",
+      "value": ""
+    },
+    {
+      "key": "order_id",
+      "value": ""
+    },
+    {
+      "key": "order_amount",
+      "value": ""
+    },
+    {
+      "key": "failed_order_id",
+      "value": ""
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    }
+  ]
+} 
